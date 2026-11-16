@@ -1,22 +1,23 @@
-
 package com.tripsync.service;
 
+import com.tripsync.dao.ActivityDAO;
 import com.tripsync.model.Activity;
 import com.tripsync.model.Destination;
 import com.tripsync.model.Traveler;
 
+import java.sql.SQLException;
 import java.util.Collection;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.Collections;
+import java.util.List;
 
 public class ActivityManager {
 
-    // Stores activities using their unique IDs
-    private final Map<String, Activity> activities;
+    // Database access object replacing the old in-memory map.
+    private final ActivityDAO activityDAO;
 
     // Constructor
     public ActivityManager() {
-        this.activities = new LinkedHashMap<>();
+        this.activityDAO = new ActivityDAO();
     }
 
     // Create an activity at a destination
@@ -34,73 +35,133 @@ public class ActivityManager {
                     "Activity cannot be null");
         }
 
-        destination.addActivity(activity);
+        try {
+            boolean created = activityDAO.createActivity(
+                    destination.getDestinationId(), activity);
 
-        activities.put(activity.getActivityId(), activity);
+            if (!created) {
+                throw new IllegalStateException(
+                        "Activity could not be saved.");
+            }
 
-        System.out.println(
-                "Activity created successfully: " + activity.getName());
+            // Keep the in-memory destination synchronized.
+            destination.addActivity(activity);
 
-        return activity;
+            System.out.println(
+                    "Activity created successfully: " + activity.getName());
+
+            return activity;
+
+        } catch (SQLException e) {
+            throw databaseError("creating activity", e);
+        }
     }
 
     // Find activity by ID
     public Activity getActivityById(String activityId) {
 
-        Activity activity = activities.get(activityId);
+        try {
+            Activity activity = activityDAO.getActivityById(activityId);
 
-        if (activity == null) {
-            throw new IllegalArgumentException(
-                    "Activity not found: " + activityId);
+            if (activity == null) {
+                throw new IllegalArgumentException(
+                        "Activity not found: " + activityId);
+            }
+
+            return activity;
+
+        } catch (SQLException e) {
+            throw databaseError("retrieving activity", e);
         }
-
-        return activity;
     }
 
     // Assign traveler to activity
     public void assignTraveler(
             String activityId, Traveler traveler) {
 
+        if (traveler == null) {
+            throw new IllegalArgumentException(
+                    "Traveler cannot be null");
+        }
+
         Activity activity = getActivityById(activityId);
 
-        activity.addParticipant(traveler);
+        try {
+            boolean assigned = activityDAO.assignParticipant(
+                    activityId, traveler.getUserId());
 
-        System.out.println(
-                traveler.getName() + " assigned to "
-                        + activity.getName());
+            if (!assigned) {
+                throw new IllegalStateException(
+                        "Traveler could not be assigned.");
+            }
+
+            System.out.println(
+                    traveler.getName() + " assigned to "
+                            + activity.getName());
+
+        } catch (SQLException e) {
+            throw databaseError("assigning traveler", e);
+        }
     }
 
     // Remove traveler from activity
     public void removeTraveler(
             String activityId, String userId) {
 
-        Activity activity = getActivityById(activityId);
+        try {
+            boolean removed = activityDAO.removeParticipant(
+                    activityId, userId);
 
-        activity.removeParticipant(userId);
+            if (!removed) {
+                throw new IllegalArgumentException(
+                        "Participant not found.");
+            }
 
-        System.out.println("Traveler removed from activity.");
+            System.out.println("Traveler removed from activity.");
+
+        } catch (SQLException e) {
+            throw databaseError("removing traveler", e);
+        }
     }
 
     // Vote for activity
     public void voteForActivity(
             String activityId, String userId) {
 
-        Activity activity = getActivityById(activityId);
+        try {
+            boolean voted = activityDAO.voteForActivity(
+                    activityId, userId);
 
-        activity.vote(userId);
+            if (!voted) {
+                throw new IllegalStateException(
+                        "Vote could not be recorded.");
+            }
 
-        System.out.println("Vote recorded successfully!");
+            System.out.println("Vote recorded successfully!");
+
+        } catch (SQLException e) {
+            throw databaseError("recording vote", e);
+        }
     }
 
     // Update activity status
     public void updateActivityStatus(
             String activityId, Activity.Status status) {
 
-        Activity activity = getActivityById(activityId);
+        try {
+            boolean updated = activityDAO.updateActivityStatus(
+                    activityId, status);
 
-        activity.updateStatus(status);
+            if (!updated) {
+                throw new IllegalArgumentException(
+                        "Activity not found: " + activityId);
+            }
 
-        System.out.println("Activity status updated!");
+            System.out.println("Activity status updated!");
+
+        } catch (SQLException e) {
+            throw databaseError("updating activity status", e);
+        }
     }
 
     // Remove activity from a destination
@@ -109,12 +170,32 @@ public class ActivityManager {
 
         Activity activity = getActivityById(activityId);
 
-        destination.removeActivity(activityId);
+        try {
+            boolean deleted = activityDAO.deleteActivity(activityId);
 
-        activities.remove(activityId);
+            if (!deleted) {
+                throw new IllegalStateException(
+                        "Activity could not be deleted.");
+            }
 
-        System.out.println(
-                activity.getName() + " removed successfully!");
+            // Best-effort in-memory synchronization. A destination
+            // loaded from the database has an empty activity list, so
+            // only remove the activity when it is actually present.
+            if (destination != null) {
+                boolean inMemory = destination.getActivities().stream()
+                        .anyMatch(a -> a.getActivityId().equals(activityId));
+
+                if (inMemory) {
+                    destination.removeActivity(activityId);
+                }
+            }
+
+            System.out.println(
+                    activity.getName() + " removed successfully!");
+
+        } catch (SQLException e) {
+            throw databaseError("deleting activity", e);
+        }
     }
 
     // Display one activity
@@ -128,6 +209,8 @@ public class ActivityManager {
     // Display all activities
     public void displayAllActivities() {
 
+        Collection<Activity> activities = getAllActivities();
+
         if (activities.isEmpty()) {
             System.out.println("No activities available.");
             return;
@@ -135,7 +218,7 @@ public class ActivityManager {
 
         System.out.println("\n========== ALL ACTIVITIES ==========");
 
-        for (Activity activity : activities.values()) {
+        for (Activity activity : activities) {
             activity.displayActivity();
         }
     }
@@ -149,18 +232,56 @@ public class ActivityManager {
                     "Destination cannot be null");
         }
 
-        destination.displayActivities();
+        List<Activity> activities;
+
+        try {
+            activities = activityDAO.getActivitiesByDestinationId(
+                    destination.getDestinationId());
+
+        } catch (SQLException e) {
+            throw databaseError("retrieving activities", e);
+        }
+
+        System.out.println("\nActivities at " + destination.getName());
+
+        if (activities.isEmpty()) {
+            System.out.println("No activities planned yet.");
+            return;
+        }
+
+        for (Activity activity : activities) {
+            activity.displayActivity();
+        }
     }
 
     // Get all activities
     public Collection<Activity> getAllActivities() {
 
-        return java.util.Collections.unmodifiableCollection(
-                activities.values());
+        try {
+            return Collections.unmodifiableCollection(
+                    activityDAO.getAllActivities());
+
+        } catch (SQLException e) {
+            throw databaseError("retrieving activities", e);
+        }
     }
 
     // Get total activity count
     public int getActivityCount() {
-        return activities.size();
+        return getAllActivities().size();
+    }
+
+    // ==========================================
+    // DATABASE ERROR HANDLING
+    // ==========================================
+
+    private IllegalStateException databaseError(
+            String operation,
+            SQLException cause) {
+
+        return new IllegalStateException(
+                "Database error while " + operation
+                        + ": " + cause.getMessage(),
+                cause);
     }
 }

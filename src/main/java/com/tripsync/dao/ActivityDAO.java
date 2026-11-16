@@ -136,6 +136,36 @@ public class ActivityDAO {
         return activities;
     }
 
+    // GET ALL ACTIVITIES ACROSS EVERY DESTINATION
+    public List<Activity> getAllActivities()
+            throws SQLException {
+
+        List<Activity> activities = new ArrayList<>();
+
+        String sql = """
+                SELECT *
+                FROM activities
+                ORDER BY activity_date, activity_time
+                """;
+
+        try (Connection conn = DBConnection.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql);
+             ResultSet rs = stmt.executeQuery()) {
+
+            while (rs.next()) {
+                activities.add(mapActivity(rs));
+            }
+        }
+
+        // Load participants and votes after closing the first query.
+        for (Activity activity : activities) {
+            loadParticipants(activity);
+            loadVotes(activity);
+        }
+
+        return activities;
+    }
+
     // UPDATE ACTIVITY
     public boolean updateActivity(Activity activity)
             throws SQLException {

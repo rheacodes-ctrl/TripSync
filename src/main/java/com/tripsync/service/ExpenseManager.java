@@ -1,6 +1,7 @@
-
 package com.tripsync.service;
 
+import com.tripsync.dao.ExpenseDAO;
+import com.tripsync.dao.PaymentDAO;
 import com.tripsync.model.Expense;
 import com.tripsync.model.Traveler;
 import com.tripsync.model.Trip;
@@ -8,20 +9,27 @@ import com.tripsync.interfaces.Payable;
 import com.tripsync.exceptions.BudgetExceededException;
 
 import java.math.BigDecimal;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 public class ExpenseManager implements Payable {
 
-    private final Map<String, Expense> expenses;
-    private final Map<String, BigDecimal> balances;
+    // Database access objects replacing the old in-memory maps.
+    private final ExpenseDAO expenseDAO;
+    private final PaymentDAO paymentDAO;
+
+    // Outstanding balances and settlements are per-trip in the
+    // database. The Payable interface methods do not carry a trip
+    // id, so the manager scopes those operations to the trip of
+    // the first expense added through this manager.
+    private String managedTripId;
 
     public ExpenseManager() {
-        expenses = new LinkedHashMap<>();
-        balances = new LinkedHashMap<>();
+        this.expenseDAO = new ExpenseDAO();
+        this.paymentDAO = new PaymentDAO();
     }
 
     // ==========================================
@@ -36,10 +44,15 @@ public class ExpenseManager implements Payable {
             );
         }
 
-        if (expenses.containsKey(expense.getExpenseId())) {
-            throw new IllegalArgumentException(
-                "Expense already exists."
-            );
+        // Preserve the original "already exists" guard.
+        try {
+            if (expenseDAO.getExpenseById(expense.getExpenseId()) != null) {
+                throw new IllegalArgumentException(
+                    "Expense already exists."
+                );
+            }
+        } catch (SQLException e) {
+            throw databaseError("checking expense", e);
         }
 
         boolean payerIncluded = false;
@@ -64,37 +77,26 @@ public class ExpenseManager implements Payable {
             );
         }
 
+        // Populate the splits on the expense object.
         expense.splitEqually(travelers);
 
-        expenses.put(expense.getExpenseId(), expense);
+        // Persist the expense and its splits.
+        try {
+            boolean added = expenseDAO.addExpense(expense);
 
-        // Initialize traveler balances
-        for (Traveler traveler : travelers) {
-            balances.putIfAbsent(
-                traveler.getUserId(),
-                BigDecimal.ZERO
-            );
+            if (!added) {
+                throw new IllegalStateException(
+                    "Expense could not be saved."
+                );
+            }
+
+        } catch (SQLException e) {
+            throw databaseError("saving expense", e);
         }
 
-        // Credit the person who paid
-        String payerId = expense.getPaidBy().getUserId();
-
-        balances.put(
-            payerId,
-            balances.get(payerId).add(expense.getAmount())
-        );
-
-        // Deduct each traveler's share
-        for (Map.Entry<String, BigDecimal> entry
-                : expense.getSplitAmounts().entrySet()) {
-
-            String userId = entry.getKey();
-            BigDecimal share = entry.getValue();
-
-            balances.put(
-                userId,
-                balances.get(userId).subtract(share)
-            );
+        // Scope Payable operations to this trip.
+        if (managedTripId == null) {
+            managedTripId = expense.getTripId();
         }
 
         System.out.println(
@@ -143,7 +145,7 @@ public class ExpenseManager implements Payable {
             );
         }
 
-        // Add only after successful budget validation
+        // Add only after successful budget validation.
         addExpense(expense, travelers);
     }
 
@@ -153,15 +155,20 @@ public class ExpenseManager implements Payable {
 
     public Expense getExpenseById(String expenseId) {
 
-        Expense expense = expenses.get(expenseId);
+        try {
+            Expense expense = expenseDAO.getExpenseById(expenseId);
 
-        if (expense == null) {
-            throw new IllegalArgumentException(
-                "Expense not found."
-            );
+            if (expense == null) {
+                throw new IllegalArgumentException(
+                    "Expense not found."
+                );
+            }
+
+            return expense;
+
+        } catch (SQLException e) {
+            throw databaseError("retrieving expense", e);
         }
-
-        return expense;
     }
 
     // ==========================================
@@ -170,6 +177,8 @@ public class ExpenseManager implements Payable {
 
     public void displayAllExpenses() {
 
+        List<Expense> expenses = getAllExpenses();
+
         if (expenses.isEmpty()) {
             System.out.println("No expenses recorded.");
             return;
@@ -177,7 +186,7 @@ public class ExpenseManager implements Payable {
 
         System.out.println("\n========== ALL EXPENSES ==========");
 
-        for (Expense expense : expenses.values()) {
+        for (Expense expense : expenses) {
             expense.displayExpense();
         }
     }
@@ -188,13 +197,12 @@ public class ExpenseManager implements Payable {
 
     public BigDecimal getTotalExpenses() {
 
-        BigDecimal total = BigDecimal.ZERO;
+        try {
+            return expenseDAO.getTotalExpenses();
 
-        for (Expense expense : expenses.values()) {
-            total = total.add(expense.getAmount());
+        } catch (SQLException e) {
+            throw databaseError("calculating total expenses", e);
         }
-
-        return total;
     }
 
     // ==========================================
@@ -203,16 +211,12 @@ public class ExpenseManager implements Payable {
 
     public BigDecimal getTotalExpenses(String tripId) {
 
-        BigDecimal total = BigDecimal.ZERO;
+        try {
+            return expenseDAO.getTotalExpenses(tripId);
 
-        for (Expense expense : expenses.values()) {
-
-            if (expense.getTripId().equals(tripId)) {
-                total = total.add(expense.getAmount());
-            }
+        } catch (SQLException e) {
+            throw databaseError("calculating trip expenses", e);
         }
-
-        return total;
     }
 
     // ==========================================
@@ -237,7 +241,13 @@ public class ExpenseManager implements Payable {
     // ==========================================
 
     public int getExpenseCount() {
-        return expenses.size();
+
+        try {
+            return expenseDAO.getExpenseCount();
+
+        } catch (SQLException e) {
+            throw databaseError("counting expenses", e);
+        }
     }
 
     // ==========================================
@@ -246,9 +256,14 @@ public class ExpenseManager implements Payable {
 
     public List<Expense> getAllExpenses() {
 
-        return Collections.unmodifiableList(
-            new ArrayList<>(expenses.values())
-        );
+        try {
+            return Collections.unmodifiableList(
+                new ArrayList<>(expenseDAO.getAllExpenses())
+            );
+
+        } catch (SQLException e) {
+            throw databaseError("retrieving expenses", e);
+        }
     }
 
     // ==========================================
@@ -258,14 +273,21 @@ public class ExpenseManager implements Payable {
     @Override
     public BigDecimal getOutstandingBalance(String userId) {
 
-        return balances.getOrDefault(
-            userId,
-            BigDecimal.ZERO
-        );
+        if (managedTripId == null) {
+            return BigDecimal.ZERO;
+        }
+
+        try {
+            return paymentDAO.getOutstandingBalance(
+                managedTripId, userId);
+
+        } catch (SQLException e) {
+            throw databaseError("retrieving balance", e);
+        }
     }
 
     // ==========================================
-    // 11. SETTLE PAYMENT
+    // 11. SETTLE PAYMENT (Payable interface)
     // ==========================================
 
     @Override
@@ -274,78 +296,61 @@ public class ExpenseManager implements Payable {
             String toUserId,
             BigDecimal amount) {
 
-        if (fromUserId == null || toUserId == null
-                || fromUserId.isBlank() || toUserId.isBlank()) {
-
-            throw new IllegalArgumentException(
-                "Both traveler IDs are required."
-            );
-        }
-
-        if (fromUserId.equals(toUserId)) {
-            throw new IllegalArgumentException(
-                "A traveler cannot pay themselves."
-            );
-        }
-
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException(
-                "Payment amount must be positive."
-            );
-        }
-
-        BigDecimal fromBalance =
-            getOutstandingBalance(fromUserId);
-
-        BigDecimal toBalance =
-            getOutstandingBalance(toUserId);
-
-        if (fromBalance.compareTo(BigDecimal.ZERO) >= 0) {
+        if (managedTripId == null) {
             throw new IllegalStateException(
-                "This traveler does not owe money."
+                "No trip is currently managed by this ExpenseManager."
             );
         }
 
-        if (toBalance.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalStateException(
-                "The receiving traveler is not owed money."
-            );
-        }
-
-        BigDecimal maxSettlement =
-            fromBalance.abs().min(toBalance);
-
-        if (amount.compareTo(maxSettlement) > 0) {
-            throw new IllegalArgumentException(
-                "Payment exceeds the outstanding amount."
-            );
-        }
-
-        // Update balances
-        balances.put(
-            fromUserId,
-            fromBalance.add(amount)
-        );
-
-        balances.put(
-            toUserId,
-            toBalance.subtract(amount)
-        );
-
-        System.out.println(
-            "Payment of Rs. " + amount
-            + " successfully settled."
-        );
+        settle(managedTripId, fromUserId, toUserId, amount);
     }
 
     // ==========================================
-    // 12. DISPLAY PENDING PAYMENTS
+    // 12. SETTLE PAYMENT FOR AN EXPLICIT TRIP
+    // ==========================================
+
+    // A settlement must be stored against a trip, so this explicit
+    // overload records the payment for the given trip and returns
+    // the generated payment id.
+    public String settlePayment(
+            String tripId,
+            String fromUserId,
+            String toUserId,
+            BigDecimal amount) {
+
+        if (tripId == null || tripId.isBlank()) {
+            throw new IllegalArgumentException(
+                "Trip ID is required."
+            );
+        }
+
+        return settle(tripId, fromUserId, toUserId, amount);
+    }
+
+    // ==========================================
+    // 13. DISPLAY PENDING PAYMENTS
     // ==========================================
 
     @Override
     public void displayPendingPayments() {
 
         System.out.println("\n========== PENDING PAYMENTS ==========");
+
+        Map<String, BigDecimal> balances;
+
+        if (managedTripId != null) {
+
+            try {
+                balances =
+                    paymentDAO.getOutstandingBalances(managedTripId);
+
+            } catch (SQLException e) {
+                throw databaseError("retrieving balances", e);
+            }
+
+        } else {
+            balances = Collections.emptyMap();
+        }
 
         boolean found = false;
 
@@ -377,5 +382,101 @@ public class ExpenseManager implements Payable {
         if (!found) {
             System.out.println("All payments are settled!");
         }
+    }
+
+    // ==========================================
+    // INTERNAL HELPERS
+    // ==========================================
+
+    // Validates and records a completed payment for the given trip.
+    // Balances are read from the database so the settlement stays
+    // consistent with every persisted expense and payment.
+    private String settle(
+            String tripId,
+            String fromUserId,
+            String toUserId,
+            BigDecimal amount) {
+
+        if (fromUserId == null || toUserId == null
+                || fromUserId.isBlank() || toUserId.isBlank()) {
+
+            throw new IllegalArgumentException(
+                "Both traveler IDs are required."
+            );
+        }
+
+        if (fromUserId.equals(toUserId)) {
+            throw new IllegalArgumentException(
+                "A traveler cannot pay themselves."
+            );
+        }
+
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException(
+                "Payment amount must be positive."
+            );
+        }
+
+        try {
+            BigDecimal fromBalance =
+                paymentDAO.getOutstandingBalance(tripId, fromUserId);
+
+            BigDecimal toBalance =
+                paymentDAO.getOutstandingBalance(tripId, toUserId);
+
+            if (fromBalance.compareTo(BigDecimal.ZERO) >= 0) {
+                throw new IllegalStateException(
+                    "This traveler does not owe money."
+                );
+            }
+
+            if (toBalance.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalStateException(
+                    "The receiving traveler is not owed money."
+                );
+            }
+
+            BigDecimal maxSettlement =
+                fromBalance.abs().min(toBalance);
+
+            if (amount.compareTo(maxSettlement) > 0) {
+                throw new IllegalArgumentException(
+                    "Payment exceeds the outstanding amount."
+                );
+            }
+
+            // A completed payment is what moves the balances in the
+            // database, so no separate in-memory update is needed.
+            String paymentId = paymentDAO.recordPayment(
+                tripId, fromUserId, toUserId, amount
+            );
+
+            if (paymentId == null) {
+                throw new IllegalStateException(
+                    "Payment could not be recorded."
+                );
+            }
+
+            System.out.println(
+                "Payment of Rs. " + amount
+                + " successfully settled."
+            );
+
+            return paymentId;
+
+        } catch (SQLException e) {
+            throw databaseError("settling payment", e);
+        }
+    }
+
+    private IllegalStateException databaseError(
+            String operation,
+            SQLException cause) {
+
+        return new IllegalStateException(
+            "Database error while " + operation
+                + ": " + cause.getMessage(),
+            cause
+        );
     }
 }

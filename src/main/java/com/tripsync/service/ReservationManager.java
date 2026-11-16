@@ -1,21 +1,21 @@
-
 package com.tripsync.service;
 
+import com.tripsync.dao.ReservationDAO;
 import com.tripsync.reservation.Reservation;
 
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.math.BigDecimal;
+import java.sql.SQLException;
 import java.util.Collection;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 public class ReservationManager {
 
-    private final Map<String, Reservation> reservations;
+    // Database access object replacing the old in-memory map.
+    private final ReservationDAO reservationDAO;
 
     public ReservationManager() {
-        reservations = new LinkedHashMap<>();
+        this.reservationDAO = new ReservationDAO();
     }
 
     // Add a new reservation
@@ -29,13 +29,25 @@ public class ReservationManager {
 
         String id = reservation.getReservationId();
 
-        if (reservations.containsKey(id)) {
-            throw new IllegalArgumentException(
-                "Reservation already exists."
-            );
-        }
+        try {
+            // Preserve the original "already exists" guard.
+            if (reservationDAO.getReservationById(id) != null) {
+                throw new IllegalArgumentException(
+                    "Reservation already exists."
+                );
+            }
 
-        reservations.put(id, reservation);
+            boolean added = reservationDAO.addReservation(reservation);
+
+            if (!added) {
+                throw new IllegalStateException(
+                    "Reservation could not be saved."
+                );
+            }
+
+        } catch (SQLException e) {
+            throw databaseError("adding reservation", e);
+        }
 
         System.out.println(
             "Reservation added successfully: "
@@ -46,15 +58,21 @@ public class ReservationManager {
     // Retrieve reservation using ID
     public Reservation getReservationById(String reservationId) {
 
-        Reservation reservation = reservations.get(reservationId);
+        try {
+            Reservation reservation =
+                reservationDAO.getReservationById(reservationId);
 
-        if (reservation == null) {
-            throw new IllegalArgumentException(
-                "Reservation not found."
-            );
+            if (reservation == null) {
+                throw new IllegalArgumentException(
+                    "Reservation not found."
+                );
+            }
+
+            return reservation;
+
+        } catch (SQLException e) {
+            throw databaseError("retrieving reservation", e);
         }
-
-        return reservation;
     }
 
     // Confirm a reservation
@@ -63,7 +81,12 @@ public class ReservationManager {
         Reservation reservation =
             getReservationById(reservationId);
 
+        // Applies the state-transition validation (e.g. cannot
+        // confirm a cancelled reservation) and updates the in-memory
+        // object before persisting the new status.
         reservation.confirmReservation();
+
+        updateStatus(reservationId, reservation.getStatus());
 
         System.out.println("Reservation confirmed successfully.");
     }
@@ -76,6 +99,8 @@ public class ReservationManager {
 
         reservation.cancelReservation();
 
+        updateStatus(reservationId, reservation.getStatus());
+
         System.out.println("Reservation cancelled successfully.");
     }
 
@@ -85,7 +110,19 @@ public class ReservationManager {
         Reservation reservation =
             getReservationById(reservationId);
 
-        reservations.remove(reservationId);
+        try {
+            boolean deleted =
+                reservationDAO.deleteReservation(reservationId);
+
+            if (!deleted) {
+                throw new IllegalStateException(
+                    "Reservation could not be deleted."
+                );
+            }
+
+        } catch (SQLException e) {
+            throw databaseError("deleting reservation", e);
+        }
 
         System.out.println(
             reservation.getReservationType()
@@ -105,6 +142,8 @@ public class ReservationManager {
     // Display all reservations
     public void displayAllReservations() {
 
+        Collection<Reservation> reservations = getAllReservations();
+
         if (reservations.isEmpty()) {
             System.out.println("No reservations found.");
             return;
@@ -112,7 +151,7 @@ public class ReservationManager {
 
         System.out.println("\n========== ALL RESERVATIONS ==========");
 
-        for (Reservation reservation : reservations.values()) {
+        for (Reservation reservation : reservations) {
             reservation.displayReservation();
         }
     }
@@ -120,33 +159,44 @@ public class ReservationManager {
     // Display reservations belonging to a particular trip
     public void displayReservationsByTrip(String tripId) {
 
-        boolean found = false;
+        List<Reservation> reservations;
 
-        for (Reservation reservation : reservations.values()) {
+        try {
+            reservations =
+                reservationDAO.getReservationsByTripId(tripId);
 
-            if (reservation.getTripId().equals(tripId)) {
-                reservation.displayReservation();
-                found = true;
-            }
+        } catch (SQLException e) {
+            throw databaseError("retrieving reservations", e);
         }
 
-        if (!found) {
+        if (reservations.isEmpty()) {
             System.out.println(
                 "No reservations found for this trip."
             );
+            return;
+        }
+
+        for (Reservation reservation : reservations) {
+            reservation.displayReservation();
         }
     }
 
     // Get all reservations without allowing external modification
     public Collection<Reservation> getAllReservations() {
-        return Collections.unmodifiableCollection(
-            reservations.values()
-        );
+
+        try {
+            return Collections.unmodifiableCollection(
+                reservationDAO.getAllReservations()
+            );
+
+        } catch (SQLException e) {
+            throw databaseError("retrieving reservations", e);
+        }
     }
 
     // Get total reservation count
     public int getReservationCount() {
-        return reservations.size();
+        return getAllReservations().size();
     }
 
     // Get count of confirmed reservations
@@ -154,7 +204,7 @@ public class ReservationManager {
 
         int count = 0;
 
-        for (Reservation reservation : reservations.values()) {
+        for (Reservation reservation : getAllReservations()) {
             if (reservation.getStatus() == Reservation.Status.CONFIRMED) {
                 count++;
             }
@@ -164,19 +214,50 @@ public class ReservationManager {
     }
 
     // Get total cost of active reservations for a trip
-    public java.math.BigDecimal getTotalReservationCost(String tripId) {
+    public BigDecimal getTotalReservationCost(String tripId) {
 
-        java.math.BigDecimal total = java.math.BigDecimal.ZERO;
+        try {
+            return reservationDAO.getTotalReservationCost(tripId);
 
-        for (Reservation reservation : reservations.values()) {
-
-            if (reservation.getTripId().equals(tripId)
-                    && reservation.getStatus() != Reservation.Status.CANCELLED) {
-
-                total = total.add(reservation.getCost());
-            }
+        } catch (SQLException e) {
+            throw databaseError(
+                "calculating reservation cost", e
+            );
         }
+    }
 
-        return total;
+    // ==========================================
+    // INTERNAL HELPERS
+    // ==========================================
+
+    private void updateStatus(
+            String reservationId, Reservation.Status status) {
+
+        try {
+            boolean updated =
+                reservationDAO.updateReservationStatus(
+                    reservationId, status
+                );
+
+            if (!updated) {
+                throw new IllegalStateException(
+                    "Reservation status could not be updated."
+                );
+            }
+
+        } catch (SQLException e) {
+            throw databaseError("updating reservation status", e);
+        }
+    }
+
+    private IllegalStateException databaseError(
+            String operation,
+            SQLException cause) {
+
+        return new IllegalStateException(
+            "Database error while " + operation
+                + ": " + cause.getMessage(),
+            cause
+        );
     }
 }
