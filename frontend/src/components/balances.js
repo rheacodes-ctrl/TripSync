@@ -17,6 +17,7 @@ export function computeBalances(trip) {
     if (r > 0.009) cr.push({ id, v: r }); else if (r < -0.009) db.push({ id, v: -r })
   })
   cr.sort((a, b) => b.v - a.v); db.sort((a, b) => b.v - a.v)
+  const outstandingTotal = Math.round(cr.reduce((t, c) => t + c.v, 0) * 100) / 100
   const transfers = []
   let i = 0, j = 0
   while (i < cr.length && j < db.length) {
@@ -26,7 +27,7 @@ export function computeBalances(trip) {
     if (cr[i].v < 0.01) i++
     if (db[j].v < 0.01) j++
   }
-  return { net, transfers }
+  return { net, transfers, outstanding: outstandingTotal }
 }
 
 export function totals(trip) {

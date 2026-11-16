@@ -1,1 +1,54 @@
 @import "tailwindcss";
+
+@theme {
+  --font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  --color-ink: #0b2a36;
+  --color-ink-soft: #46606c;
+  --color-mist: #f2f6f7;
+  --color-line: #dce5e8;
+
+  --color-lagoon-50: #eaf6f6;
+  --color-lagoon-100: #d2ebec;
+  --color-lagoon-200: #a8d8da;
+  --color-lagoon-500: #17959a;
+  --color-lagoon-600: #0f7d82;
+  --color-lagoon-700: #0b6468;
+  --color-lagoon-800: #094e52;
+
+  --color-sun-100: #fdebd0;
+  --color-sun-400: #f6b04f;
+  --color-sun-500: #f4a340;
+  --color-sun-600: #d98a22;
+
+  --color-coral-50: #fdeeea;
+  --color-coral-500: #e4572e;
+  --color-coral-600: #c9441d;
+}
+
+html { scroll-behavior: smooth; }
+body {
+  font-family: var(--font-sans);
+  background: var(--color-mist);
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3, .font-display { font-family: var(--font-display); letter-spacing: -0.015em; }
+
+:focus-visible { outline: 2px solid var(--color-lagoon-500); outline-offset: 2px; }
+
+/* Modal open animation – answers a user action, so motion is welcome */
+@keyframes pop-in { from { opacity: 0; transform: translateY(8px) scale(.985); } to { opacity: 1; transform: none; } }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+.pop-in { animation: pop-in .18s ease-out; }
+.fade-in { animation: fade-in .15s ease-out; }
+
+/* One orchestrated moment: the plane on the hero scene drifts along its trail */
+@keyframes drift { from { transform: translate(-30px, 14px); } to { transform: translate(0, 0); } }
+.plane-drift { animation: drift 2.4s ease-out both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .pop-in, .fade-in, .plane-drift { animation: none; }
+  html { scroll-behavior: auto; }
+}

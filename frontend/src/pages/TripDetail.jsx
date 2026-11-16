@@ -1,16 +1,22 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
+import { ArrowLeft, Bell, CalendarDays, FileText, LayoutDashboard, Map, Pencil, Receipt, Ticket, Trash2, UserRound } from 'lucide-react'
 import { api } from '../api/client.js'
 import { useAuth } from '../context/AuthContext.jsx'
-import { Button, Empty, fmtDate } from '../components/ui.jsx'
+import { Button, Empty, daysBetween, fmtRange } from '../components/ui.jsx'
+import { CoverArt } from '../components/Scene.jsx'
 import { TripForm } from './Dashboard.jsx'
 import Overview from '../tabs/Overview.jsx'
 import Itinerary from '../tabs/Itinerary.jsx'
 import Reservations from '../tabs/Reservations.jsx'
 import Expenses from '../tabs/Expenses.jsx'
+import Notifications from '../tabs/Notifications.jsx'
 import Documents from '../tabs/Documents.jsx'
 
-const TABS = [['overview', 'Overview'], ['itinerary', 'Itinerary'], ['reservations', 'Reservations'], ['expenses', 'Expenses'], ['documents', 'Documents']]
+const TABS = [
+  ['overview', 'Overview', LayoutDashboard], ['itinerary', 'Itinerary', Map], ['reservations', 'Reservations', Ticket],
+  ['expenses', 'Expenses', Receipt], ['notifications', 'Notifications', Bell], ['documents', 'Documents', FileText],
+]
 
 export default function TripDetail() {
   const { tripId } = useParams()
@@ -23,40 +29,50 @@ export default function TripDetail() {
   const refresh = useCallback(() => api.getTrip(tripId).then(setTrip).catch((e) => setError(e.message)), [tripId])
   useEffect(() => { refresh() }, [refresh])
 
-  if (error) return <Empty>{error} — <Link className="text-teal-700 underline" to="/">back</Link></Empty>
-  if (!trip) return <Empty>Loading…</Empty>
+  if (error) return <Empty icon={Map} title="Couldn’t open this trip" action={<Link to="/trips"><Button variant="ghost">Back to trips</Button></Link>}>{error}</Empty>
+  if (!trip) return <p className="text-center text-ink-soft py-20">Loading trip…</p>
   const isAdmin = trip.adminId === user.userId
   const ctx = { trip, user, isAdmin, refresh }
-  // run an API call then reload trip data
-  ctx.run = async (fn) => { await fn(); await refresh() }
+  ctx.run = async (fn) => { await fn(); await refresh() } // run an API call, then reload the trip
+  const days = daysBetween(trip.startDate, trip.endDate) + 1
 
   return (
     <>
-      <Link to="/" className="text-sm text-slate-500 hover:text-teal-700">← All trips</Link>
-      <div className="flex flex-wrap items-start justify-between gap-3 mt-2 mb-4">
-        <div>
-          <h1 className="text-2xl font-bold">{trip.tripName}</h1>
-          <p className="text-sm text-slate-500">{fmtDate(trip.startDate)} → {fmtDate(trip.endDate)} · Admin: {trip.admin?.name}</p>
-        </div>
-        {isAdmin && (
-          <div className="flex gap-2">
-            <Button variant="ghost" onClick={() => setEditing(true)}>Edit</Button>
-            <Button variant="danger" onClick={async () => { if (confirm('Delete this trip and all its data?')) { await api.deleteTrip(tripId); nav('/') } }}>Delete</Button>
+      <Link to="/trips" className="inline-flex items-center gap-1.5 text-sm text-ink-soft hover:text-lagoon-700"><ArrowLeft size={15} />All trips</Link>
+      <section className="relative overflow-hidden rounded-3xl text-white mt-3">
+        <CoverArt seed={trip.tripName} className="absolute inset-0 w-full h-full" />
+        <div className="absolute inset-0 bg-gradient-to-t from-ink/80 via-ink/25 to-transparent" />
+        <div className="relative p-6 sm:p-8 pt-24 sm:pt-32 flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="font-display text-3xl sm:text-4xl font-semibold">{trip.tripName}</h1>
+            <p className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-sm text-white/90">
+              <span className="inline-flex items-center gap-1.5"><CalendarDays size={15} />{fmtRange(trip.startDate, trip.endDate)} ({days} {days === 1 ? 'day' : 'days'})</span>
+              <span className="inline-flex items-center gap-1.5"><UserRound size={15} />Admin: {trip.admin?.name}</span>
+            </p>
           </div>
-        )}
-      </div>
-      <div className="flex gap-1 border-b border-slate-200 mb-5 overflow-x-auto">
-        {TABS.map(([k, label]) => (
-          <button key={k} onClick={() => setTab(k)}
-            className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 -mb-px ${tab === k ? 'border-teal-600 text-teal-700' : 'border-transparent text-slate-500 hover:text-slate-800'}`}>
-            {label}
+          {isAdmin && (
+            <div className="flex gap-2">
+              <Button variant="onDark" onClick={() => setEditing(true)}><Pencil size={15} />Edit trip</Button>
+              <Button variant="onDark" onClick={async () => { if (confirm('Delete this trip and all its data?')) { await api.deleteTrip(tripId); nav('/trips') } }}><Trash2 size={15} />Delete</Button>
+            </div>
+          )}
+        </div>
+      </section>
+
+      <div role="tablist" className="flex gap-1 border-b border-line mt-6 mb-6 overflow-x-auto">
+        {TABS.map(([k, label, Icon]) => (
+          <button key={k} role="tab" aria-selected={tab === k} onClick={() => setTab(k)}
+            className={`inline-flex items-center gap-2 px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 -mb-px transition-colors ${tab === k ? 'border-lagoon-600 text-lagoon-700' : 'border-transparent text-ink-soft hover:text-ink'}`}>
+            <Icon size={16} />{label}
           </button>
         ))}
       </div>
+
       {tab === 'overview' && <Overview {...ctx} />}
       {tab === 'itinerary' && <Itinerary {...ctx} />}
       {tab === 'reservations' && <Reservations {...ctx} />}
       {tab === 'expenses' && <Expenses {...ctx} />}
+      {tab === 'notifications' && <Notifications {...ctx} />}
       {tab === 'documents' && <Documents {...ctx} />}
       {editing && <TripForm title="Edit trip" initial={trip} onClose={() => setEditing(false)}
         onSubmit={(f) => ctx.run(() => api.updateTrip(tripId, f))} />}
