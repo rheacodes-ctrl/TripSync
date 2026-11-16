@@ -1,0 +1,16 @@
+# Compiled Java files
+*.class
+out/
+
+# Build directories
+target/
+
+# IDE files
+.idea/
+.vscode/
+
+# Mac files
+.DS_Store
+
+# Environment secrets
+.env
