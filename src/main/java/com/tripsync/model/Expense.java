@@ -4,10 +4,9 @@ package com.tripsync.model;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.Collections;
-import java.util.LinkedHashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -21,9 +20,9 @@ public class Expense {
     private BigDecimal amount;
     private final Traveler paidBy;
     private final LocalDate expenseDate;
-
     private final Map<String, BigDecimal> splitAmounts;
 
+    // Constructor for creating a new expense
     public Expense(
             String tripId,
             String description,
@@ -31,44 +30,71 @@ public class Expense {
             Traveler paidBy,
             LocalDate expenseDate) {
 
+        this(
+            UUID.randomUUID().toString(),
+            tripId,
+            description,
+            amount,
+            paidBy,
+            expenseDate,
+            null
+        );
+    }
+
+    // Constructor for reconstructing an expense from MySQL
+    public Expense(
+            String expenseId,
+            String tripId,
+            String description,
+            BigDecimal amount,
+            Traveler paidBy,
+            LocalDate expenseDate,
+            Map<String, BigDecimal> splitAmounts) {
+
+        if (expenseId == null || expenseId.isBlank()) {
+            throw new IllegalArgumentException("Expense ID is required.");
+        }
+
         if (tripId == null || tripId.isBlank()) {
             throw new IllegalArgumentException("Trip ID is required.");
         }
 
         if (description == null || description.isBlank()) {
-            throw new IllegalArgumentException(
-                "Expense description cannot be empty."
-            );
+            throw new IllegalArgumentException("Expense description cannot be empty.");
         }
 
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException(
-                "Expense amount must be positive."
-            );
+            throw new IllegalArgumentException("Expense amount must be positive.");
         }
 
         if (paidBy == null) {
-            throw new IllegalArgumentException(
-                "Payer cannot be null."
-            );
+            throw new IllegalArgumentException("Payer cannot be null.");
         }
 
         if (expenseDate == null) {
-            throw new IllegalArgumentException(
-                "Expense date is required."
-            );
+            throw new IllegalArgumentException("Expense date is required.");
         }
 
-        this.expenseId = UUID.randomUUID().toString();
+        this.expenseId = expenseId;
         this.tripId = tripId;
         this.description = description;
         this.amount = amount.setScale(2, RoundingMode.HALF_UP);
         this.paidBy = paidBy;
         this.expenseDate = expenseDate;
         this.splitAmounts = new LinkedHashMap<>();
-    }
 
-    // Getters
+        if (splitAmounts != null) {
+            for (Map.Entry<String, BigDecimal> entry : splitAmounts.entrySet()) {
+                if (entry.getKey() == null || entry.getValue() == null) {
+                    throw new IllegalArgumentException("Invalid expense split.");
+                }
+                this.splitAmounts.put(
+                    entry.getKey(),
+                    entry.getValue().setScale(2, RoundingMode.HALF_UP)
+                );
+            }
+        }
+    }
 
     public String getExpenseId() {
         return expenseId;
@@ -98,23 +124,16 @@ public class Expense {
         return Collections.unmodifiableMap(splitAmounts);
     }
 
-    // Update expense description
-
     public void updateDescription(String description) {
-
         if (description == null || description.isBlank()) {
             throw new IllegalArgumentException(
                 "Description cannot be empty."
             );
         }
-
         this.description = description;
     }
 
-    // Split expense equally among travelers
-
     public void splitEqually(List<Traveler> travelers) {
-
         if (travelers == null || travelers.isEmpty()) {
             throw new IllegalArgumentException(
                 "At least one traveler is required."
@@ -124,7 +143,6 @@ public class Expense {
         Set<String> travelerIds = new HashSet<>();
 
         for (Traveler traveler : travelers) {
-
             if (traveler == null) {
                 throw new IllegalArgumentException(
                     "Traveler cannot be null."
@@ -149,12 +167,10 @@ public class Expense {
         BigDecimal distributedAmount = BigDecimal.ZERO;
 
         for (int i = 0; i < travelers.size(); i++) {
-
             Traveler traveler = travelers.get(i);
             BigDecimal travelerShare;
 
             if (i == travelers.size() - 1) {
-                // Assign remaining paise to the last traveler
                 travelerShare = amount.subtract(distributedAmount);
             } else {
                 travelerShare = share;
@@ -168,27 +184,20 @@ public class Expense {
         }
     }
 
-    // Display expense information
-
     public void displayExpense() {
-
         System.out.println("\n----- EXPENSE DETAILS -----");
-
         System.out.println("Expense ID: " + expenseId);
         System.out.println("Description: " + description);
         System.out.println("Trip ID: " + tripId);
         System.out.println("Amount: Rs. " + amount);
         System.out.println("Paid By: " + paidBy.getName());
         System.out.println("Date: " + expenseDate);
-
         System.out.println("\nExpense Split:");
 
         if (splitAmounts.isEmpty()) {
             System.out.println("Expense has not been split yet.");
         } else {
-            for (Map.Entry<String, BigDecimal> entry
-                    : splitAmounts.entrySet()) {
-
+            for (Map.Entry<String, BigDecimal> entry : splitAmounts.entrySet()) {
                 System.out.println(
                     "Traveler ID: " + entry.getKey()
                     + " | Share: Rs. " + entry.getValue()

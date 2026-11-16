@@ -23,28 +23,55 @@ public class ActivityReservation extends Reservation {
 
         super(tripId, activityName, cost, reservationDate);
 
-        if (activityName == null || activityName.isBlank()) {
-            throw new IllegalArgumentException(
-                "Activity name cannot be empty."
-            );
-        }
-
-        if (location == null || location.isBlank()) {
-            throw new IllegalArgumentException(
-                "Location cannot be empty."
-            );
-        }
-
-        if (activityTime == null || numberOfParticipants <= 0) {
-            throw new IllegalArgumentException(
-                "Valid activity time and participant count are required."
-            );
-        }
+        validate(activityName, location,
+                activityTime, numberOfParticipants);
 
         this.activityName = activityName;
         this.location = location;
         this.activityTime = activityTime;
         this.numberOfParticipants = numberOfParticipants;
+    }
+
+    // Database-loading constructor
+    public ActivityReservation(
+            String reservationId,
+            String tripId,
+            String activityName,
+            BigDecimal cost,
+            LocalDate reservationDate,
+            Status status,
+            String location,
+            LocalTime activityTime,
+            int numberOfParticipants) {
+
+        super(reservationId, tripId, activityName,
+                cost, reservationDate, status);
+
+        validate(activityName, location,
+                activityTime, numberOfParticipants);
+
+        this.activityName = activityName;
+        this.location = location;
+        this.activityTime = activityTime;
+        this.numberOfParticipants = numberOfParticipants;
+    }
+
+    private void validate(String name, String location,
+                          LocalTime time, int participants) {
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Activity name cannot be empty.");
+        }
+
+        if (location == null || location.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Location cannot be empty.");
+        }
+
+        if (time == null || participants <= 0) {
+            throw new IllegalArgumentException(
+                    "Valid activity time and participant count are required.");
+        }
     }
 
     public String getActivityName() {

@@ -11,7 +11,6 @@ import java.util.UUID;
 
 public class Trip implements Collaboratable {
 
-    // Attributes
     private final String tripId;
     private String tripName;
     private String description;
@@ -23,33 +22,44 @@ public class Trip implements Collaboratable {
     private final List<Traveler> members;
     private final List<Destination> destinations;
 
-    // Constructor
+    // Constructor for creating a new trip
     public Trip(String tripName, String description,
                 LocalDate startDate, LocalDate endDate,
                 BigDecimal budget, TripAdmin admin) {
 
-        if (tripName == null || tripName.isBlank()) {
-            throw new IllegalArgumentException(
-                    "Trip name cannot be empty");
+        this(UUID.randomUUID().toString(), tripName, description,
+                startDate, endDate, budget, admin);
+
+        admin.incrementManagedTripCount();
+    }
+
+    // Constructor for loading an existing trip from database
+    public Trip(String tripId, String tripName, String description,
+                LocalDate startDate, LocalDate endDate,
+                BigDecimal budget, TripAdmin admin) {
+
+        if (tripId == null || tripId.isBlank()) {
+            throw new IllegalArgumentException("Trip ID cannot be empty");
         }
 
-        if (startDate == null || endDate == null ||
-                endDate.isBefore(startDate)) {
+        if (tripName == null || tripName.isBlank()) {
+            throw new IllegalArgumentException("Trip name cannot be empty");
+        }
+
+        if (startDate == null || endDate == null
+                || endDate.isBefore(startDate)) {
             throw new IllegalArgumentException("Invalid trip dates");
         }
 
-        if (budget == null ||
-                budget.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException(
-                    "Budget must be positive");
+        if (budget == null || budget.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Budget must be positive");
         }
 
         if (admin == null) {
-            throw new IllegalArgumentException(
-                    "Trip must have an admin");
+            throw new IllegalArgumentException("Trip must have an admin");
         }
 
-        this.tripId = UUID.randomUUID().toString();
+        this.tripId = tripId;
         this.tripName = tripName;
         this.description = description;
         this.startDate = startDate;
@@ -59,8 +69,6 @@ public class Trip implements Collaboratable {
 
         this.members = new ArrayList<>();
         this.destinations = new ArrayList<>();
-
-        admin.incrementManagedTripCount();
     }
 
     // Getters
@@ -103,10 +111,8 @@ public class Trip implements Collaboratable {
     // Update trip name
     public void updateTripName(String tripName) {
         if (tripName == null || tripName.isBlank()) {
-            throw new IllegalArgumentException(
-                    "Trip name cannot be empty");
+            throw new IllegalArgumentException("Trip name cannot be empty");
         }
-
         this.tripName = tripName;
     }
 
@@ -115,10 +121,10 @@ public class Trip implements Collaboratable {
         this.description = description;
     }
 
-    // Update trip dates
+    // Update dates
     public void updateDates(LocalDate startDate, LocalDate endDate) {
-        if (startDate == null || endDate == null ||
-                endDate.isBefore(startDate)) {
+        if (startDate == null || endDate == null
+                || endDate.isBefore(startDate)) {
             throw new IllegalArgumentException("Invalid trip dates");
         }
 
@@ -128,12 +134,9 @@ public class Trip implements Collaboratable {
 
     // Update budget
     public void updateBudget(BigDecimal budget) {
-        if (budget == null ||
-                budget.compareTo(BigDecimal.ZERO) <= 0) {
-            throw new IllegalArgumentException(
-                    "Budget must be positive");
+        if (budget == null || budget.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("Budget must be positive");
         }
-
         this.budget = budget;
     }
 
@@ -141,8 +144,7 @@ public class Trip implements Collaboratable {
     @Override
     public void addMember(Traveler traveler) {
         if (traveler == null) {
-            throw new IllegalArgumentException(
-                    "Traveler cannot be null");
+            throw new IllegalArgumentException("Traveler cannot be null");
         }
 
         boolean alreadyMember = members.stream()
@@ -162,8 +164,7 @@ public class Trip implements Collaboratable {
     @Override
     public void removeMember(String userId) {
         if (userId == null || userId.isBlank()) {
-            throw new IllegalArgumentException(
-                    "User ID cannot be empty");
+            throw new IllegalArgumentException("User ID cannot be empty");
         }
 
         boolean removed = members.removeIf(
@@ -187,28 +188,25 @@ public class Trip implements Collaboratable {
 
         for (Traveler traveler : members) {
             System.out.println(
-                    traveler.getName() + " (" +
-                    traveler.getEmail() + ")");
+                    traveler.getName() + " (" + traveler.getEmail() + ")");
         }
     }
 
     // Add destination
     public void addDestination(Destination destination) {
+        if (destination == null) {
+            throw new IllegalArgumentException(
+                    "Destination cannot be null");
+        }
 
-    if (destination == null) {
-        throw new IllegalArgumentException(
-                "Destination cannot be null");
+        if (destination.getArrivalDate().isBefore(startDate)
+                || destination.getDepartureDate().isAfter(endDate)) {
+            throw new IllegalArgumentException(
+                    "Destination dates must fall within trip dates");
+        }
+
+        destinations.add(destination);
     }
-
-    if (destination.getArrivalDate().isBefore(startDate) ||
-            destination.getDepartureDate().isAfter(endDate)) {
-
-        throw new IllegalArgumentException(
-                "Destination dates must fall within trip dates");
-    }
-
-    destinations.add(destination);
-}
 
     // Display trip details
     public void displayTripDetails() {

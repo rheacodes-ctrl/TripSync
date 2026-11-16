@@ -1,3 +1,4 @@
+
 package com.tripsync.model;
 
 import java.util.ArrayList;
@@ -5,12 +6,25 @@ import java.util.List;
 
 public class Traveler extends User {
 
-    private List<String> preferences;
-    private List<String> joinedTripIds;
+    private final List<String> preferences;
+    private final List<String> joinedTripIds;
 
+    // Normal constructor
     public Traveler(String name, String email, String password) {
-
         super(name, email, password);
+
+        this.preferences = new ArrayList<>();
+        this.joinedTripIds = new ArrayList<>();
+    }
+
+    // Database constructor
+    public Traveler(
+            String userId,
+            String name,
+            String email,
+            boolean fromDatabase
+    ) {
+        super(userId, name, email, fromDatabase);
 
         this.preferences = new ArrayList<>();
         this.joinedTripIds = new ArrayList<>();
@@ -23,7 +37,8 @@ public class Traveler extends User {
     }
 
     public void joinTrip(String tripId) {
-        if (!joinedTripIds.contains(tripId)) {
+        if (tripId != null && !tripId.isBlank()
+                && !joinedTripIds.contains(tripId)) {
             joinedTripIds.add(tripId);
         }
     }
@@ -43,8 +58,8 @@ public class Traveler extends User {
 
     @Override
     public void displayProfile() {
-
         System.out.println("\n----- TRAVELER PROFILE -----");
+        System.out.println("User ID: " + getUserId());
         System.out.println("Name: " + getName());
         System.out.println("Email: " + getEmail());
         System.out.println("Role: " + getRole());

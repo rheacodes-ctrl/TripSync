@@ -16,37 +16,47 @@ public class Destination {
     private LocalDate arrivalDate;
     private LocalDate departureDate;
 
-    // Activities planned at this destination
     private final List<Activity> activities;
 
-    // Constructor
+    // Constructor for creating a new destination
     public Destination(String name, String city, String country,
                        String description,
                        LocalDate arrivalDate,
                        LocalDate departureDate) {
 
+        this(UUID.randomUUID().toString(), name, city, country,
+             description, arrivalDate, departureDate);
+    }
+
+    // Constructor for loading a destination from MySQL
+    public Destination(String destinationId,
+                       String name, String city, String country,
+                       String description,
+                       LocalDate arrivalDate,
+                       LocalDate departureDate) {
+
+        if (destinationId == null || destinationId.isBlank()) {
+            throw new IllegalArgumentException("Destination ID cannot be empty");
+        }
+
         if (name == null || name.isBlank()) {
-            throw new IllegalArgumentException(
-                    "Destination name cannot be empty");
+            throw new IllegalArgumentException("Destination name cannot be empty");
         }
 
         if (city == null || city.isBlank()) {
-            throw new IllegalArgumentException(
-                    "City cannot be empty");
+            throw new IllegalArgumentException("City cannot be empty");
         }
 
         if (country == null || country.isBlank()) {
-            throw new IllegalArgumentException(
-                    "Country cannot be empty");
+            throw new IllegalArgumentException("Country cannot be empty");
         }
 
         if (arrivalDate == null || departureDate == null ||
                 departureDate.isBefore(arrivalDate)) {
-            throw new IllegalArgumentException(
-                    "Invalid destination dates");
+            throw new IllegalArgumentException("Invalid destination dates");
         }
 
-        this.destinationId = UUID.randomUUID().toString();
+        this.destinationId = destinationId;
         this.name = name;
         this.city = city;
         this.country = country;
@@ -101,11 +111,9 @@ public class Destination {
 
         if (arrivalDate == null || departureDate == null ||
                 departureDate.isBefore(arrivalDate)) {
-            throw new IllegalArgumentException(
-                    "Invalid destination dates");
+            throw new IllegalArgumentException("Invalid destination dates");
         }
 
-        // Ensure existing activities remain within the new dates
         for (Activity activity : activities) {
             if (activity.getActivityDate().isBefore(arrivalDate) ||
                     activity.getActivityDate().isAfter(departureDate)) {
@@ -122,8 +130,7 @@ public class Destination {
     public void addActivity(Activity activity) {
 
         if (activity == null) {
-            throw new IllegalArgumentException(
-                    "Activity cannot be null");
+            throw new IllegalArgumentException("Activity cannot be null");
         }
 
         if (activity.getActivityDate().isBefore(arrivalDate) ||
@@ -151,12 +158,11 @@ public class Destination {
                 activity -> activity.getActivityId().equals(activityId));
 
         if (!removed) {
-            throw new IllegalArgumentException(
-                    "Activity not found");
+            throw new IllegalArgumentException("Activity not found");
         }
     }
 
-    // Display all activities
+    // Display activities
     public void displayActivities() {
 
         System.out.println("\nActivities at " + name);

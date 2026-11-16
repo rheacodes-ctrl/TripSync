@@ -21,22 +21,48 @@ public class HotelReservation extends Reservation {
             int numberOfRooms) {
 
         super(tripId, hotelName, cost, reservationDate);
-
-        if (checkInDate == null || checkOutDate == null ||
-                checkOutDate.isBefore(checkInDate)) {
-            throw new IllegalArgumentException("Invalid hotel dates.");
-        }
-
-        if (numberOfRooms <= 0) {
-            throw new IllegalArgumentException(
-                "Number of rooms must be positive."
-            );
-        }
+        validate(checkInDate, checkOutDate, numberOfRooms);
 
         this.hotelName = hotelName;
         this.checkInDate = checkInDate;
         this.checkOutDate = checkOutDate;
         this.numberOfRooms = numberOfRooms;
+    }
+
+    // Database-loading constructor
+    public HotelReservation(
+            String reservationId,
+            String tripId,
+            String hotelName,
+            BigDecimal cost,
+            LocalDate reservationDate,
+            Status status,
+            LocalDate checkInDate,
+            LocalDate checkOutDate,
+            int numberOfRooms) {
+
+        super(reservationId, tripId, hotelName,
+                cost, reservationDate, status);
+
+        validate(checkInDate, checkOutDate, numberOfRooms);
+
+        this.hotelName = hotelName;
+        this.checkInDate = checkInDate;
+        this.checkOutDate = checkOutDate;
+        this.numberOfRooms = numberOfRooms;
+    }
+
+    private void validate(LocalDate checkIn, LocalDate checkOut,
+                          int rooms) {
+        if (checkIn == null || checkOut == null ||
+                checkOut.isBefore(checkIn)) {
+            throw new IllegalArgumentException("Invalid hotel dates.");
+        }
+
+        if (rooms <= 0) {
+            throw new IllegalArgumentException(
+                    "Number of rooms must be positive.");
+        }
     }
 
     public String getHotelName() {

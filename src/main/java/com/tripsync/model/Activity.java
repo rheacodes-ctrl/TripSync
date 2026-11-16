@@ -29,14 +29,26 @@ public class Activity {
     private final List<Traveler> participants;
     private final Set<String> voterIds;
 
-    // Constructor
+    // Constructor for creating a new activity
     public Activity(String name, String description,
                     LocalDate activityDate, LocalTime activityTime,
                     BigDecimal estimatedCost) {
 
+        this(UUID.randomUUID().toString(), name, description,
+             activityDate, activityTime, estimatedCost, Status.PLANNED);
+    }
+
+    // Constructor for loading an existing activity from MySQL
+    public Activity(String activityId, String name, String description,
+                    LocalDate activityDate, LocalTime activityTime,
+                    BigDecimal estimatedCost, Status status) {
+
+        if (activityId == null || activityId.isBlank()) {
+            throw new IllegalArgumentException("Activity ID cannot be empty");
+        }
+
         if (name == null || name.isBlank()) {
-            throw new IllegalArgumentException(
-                    "Activity name cannot be empty");
+            throw new IllegalArgumentException("Activity name cannot be empty");
         }
 
         if (activityDate == null || activityTime == null) {
@@ -50,14 +62,18 @@ public class Activity {
                     "Activity cost cannot be negative");
         }
 
-        this.activityId = UUID.randomUUID().toString();
+        if (status == null) {
+            throw new IllegalArgumentException("Activity status cannot be null");
+        }
+
+        this.activityId = activityId;
         this.name = name;
         this.description = description;
         this.activityDate = activityDate;
         this.activityTime = activityTime;
         this.estimatedCost = estimatedCost;
+        this.status = status;
 
-        this.status = Status.PLANNED;
         this.participants = new ArrayList<>();
         this.voterIds = new HashSet<>();
     }
@@ -103,14 +119,14 @@ public class Activity {
     public void updateDetails(String name, String description) {
 
         if (name == null || name.isBlank()) {
-            throw new IllegalArgumentException(
-                    "Activity name cannot be empty");
+            throw new IllegalArgumentException("Activity name cannot be empty");
         }
 
         this.name = name;
         this.description = description;
     }
 
+    // Update activity schedule
     public void updateSchedule(LocalDate date, LocalTime time) {
 
         if (date == null || time == null) {
@@ -122,12 +138,12 @@ public class Activity {
         this.activityTime = time;
     }
 
+    // Update estimated cost
     public void updateEstimatedCost(BigDecimal cost) {
 
         if (cost == null ||
                 cost.compareTo(BigDecimal.ZERO) < 0) {
-            throw new IllegalArgumentException(
-                    "Cost cannot be negative");
+            throw new IllegalArgumentException("Cost cannot be negative");
         }
 
         this.estimatedCost = cost;
@@ -137,13 +153,11 @@ public class Activity {
     public void addParticipant(Traveler traveler) {
 
         if (traveler == null) {
-            throw new IllegalArgumentException(
-                    "Traveler cannot be null");
+            throw new IllegalArgumentException("Traveler cannot be null");
         }
 
         boolean alreadyAdded = participants.stream()
-                .anyMatch(p ->
-                        p.getUserId().equals(traveler.getUserId()));
+                .anyMatch(p -> p.getUserId().equals(traveler.getUserId()));
 
         if (alreadyAdded) {
             throw new IllegalArgumentException(
@@ -156,12 +170,15 @@ public class Activity {
     // Remove participant
     public void removeParticipant(String userId) {
 
+        if (userId == null || userId.isBlank()) {
+            throw new IllegalArgumentException("Invalid user ID");
+        }
+
         boolean removed = participants.removeIf(
                 p -> p.getUserId().equals(userId));
 
         if (!removed) {
-            throw new IllegalArgumentException(
-                    "Participant not found");
+            throw new IllegalArgumentException("Participant not found");
         }
 
         voterIds.remove(userId);
@@ -171,8 +188,7 @@ public class Activity {
     public void vote(String userId) {
 
         if (userId == null || userId.isBlank()) {
-            throw new IllegalArgumentException(
-                    "Invalid voter ID");
+            throw new IllegalArgumentException("Invalid voter ID");
         }
 
         boolean isParticipant = participants.stream()
@@ -193,8 +209,7 @@ public class Activity {
     public void updateStatus(Status status) {
 
         if (status == null) {
-            throw new IllegalArgumentException(
-                    "Status cannot be null");
+            throw new IllegalArgumentException("Status cannot be null");
         }
 
         this.status = status;

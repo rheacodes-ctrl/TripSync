@@ -8,10 +8,7 @@ import java.time.LocalTime;
 public class TransportReservation extends Reservation {
 
     public enum TransportType {
-        FLIGHT,
-        TRAIN,
-        BUS,
-        CAB
+        FLIGHT, TRAIN, BUS, CAB
     }
 
     private TransportType transportType;
@@ -33,24 +30,55 @@ public class TransportReservation extends Reservation {
 
         super(tripId, providerName, cost, reservationDate);
 
-        if (transportType == null || departureTime == null) {
-            throw new IllegalArgumentException(
-                "Transport type and departure time are required."
-            );
-        }
-
-        if (departureLocation == null || departureLocation.isBlank()
-                || arrivalLocation == null || arrivalLocation.isBlank()) {
-            throw new IllegalArgumentException(
-                "Departure and arrival locations are required."
-            );
-        }
+        validate(transportType, departureLocation,
+                arrivalLocation, departureTime);
 
         this.transportType = transportType;
         this.departureLocation = departureLocation;
         this.arrivalLocation = arrivalLocation;
         this.departureTime = departureTime;
         this.bookingReference = bookingReference;
+    }
+
+    // Database-loading constructor
+    public TransportReservation(
+            String reservationId,
+            String tripId,
+            String providerName,
+            BigDecimal cost,
+            LocalDate reservationDate,
+            Status status,
+            TransportType transportType,
+            String departureLocation,
+            String arrivalLocation,
+            LocalTime departureTime,
+            String bookingReference) {
+
+        super(reservationId, tripId, providerName,
+                cost, reservationDate, status);
+
+        validate(transportType, departureLocation,
+                arrivalLocation, departureTime);
+
+        this.transportType = transportType;
+        this.departureLocation = departureLocation;
+        this.arrivalLocation = arrivalLocation;
+        this.departureTime = departureTime;
+        this.bookingReference = bookingReference;
+    }
+
+    private void validate(TransportType type, String departure,
+                          String arrival, LocalTime time) {
+        if (type == null || time == null) {
+            throw new IllegalArgumentException(
+                    "Transport type and departure time are required.");
+        }
+
+        if (departure == null || departure.isBlank()
+                || arrival == null || arrival.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Departure and arrival locations are required.");
+        }
     }
 
     public TransportType getTransportType() {

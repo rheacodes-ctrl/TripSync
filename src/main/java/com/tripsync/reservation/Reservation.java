@@ -8,9 +8,7 @@ import java.util.UUID;
 public abstract class Reservation {
 
     public enum Status {
-        PENDING,
-        CONFIRMED,
-        CANCELLED
+        PENDING, CONFIRMED, CANCELLED
     }
 
     private final String reservationId;
@@ -20,11 +18,21 @@ public abstract class Reservation {
     private LocalDate reservationDate;
     private Status status;
 
+    // Constructor for creating a new reservation
     public Reservation(String tripId, String providerName,
                        BigDecimal cost, LocalDate reservationDate) {
+        this(UUID.randomUUID().toString(), tripId, providerName,
+                cost, reservationDate, Status.PENDING);
+    }
 
-        if (tripId == null || tripId.isBlank()) {
-            throw new IllegalArgumentException("Trip ID cannot be empty.");
+    // Constructor for loading an existing reservation from MySQL
+    protected Reservation(String reservationId, String tripId,
+                          String providerName, BigDecimal cost,
+                          LocalDate reservationDate, Status status) {
+
+        if (reservationId == null || reservationId.isBlank()
+                || tripId == null || tripId.isBlank()) {
+            throw new IllegalArgumentException("Invalid reservation or trip ID.");
         }
 
         if (providerName == null || providerName.isBlank()) {
@@ -35,16 +43,16 @@ public abstract class Reservation {
             throw new IllegalArgumentException("Cost cannot be negative.");
         }
 
-        if (reservationDate == null) {
-            throw new IllegalArgumentException("Reservation date is required.");
+        if (reservationDate == null || status == null) {
+            throw new IllegalArgumentException("Date and status are required.");
         }
 
-        this.reservationId = UUID.randomUUID().toString();
+        this.reservationId = reservationId;
         this.tripId = tripId;
         this.providerName = providerName;
         this.cost = cost;
         this.reservationDate = reservationDate;
-        this.status = Status.PENDING;
+        this.status = status;
     }
 
     public String getReservationId() {
@@ -74,8 +82,7 @@ public abstract class Reservation {
     public void confirmReservation() {
         if (status == Status.CANCELLED) {
             throw new IllegalStateException(
-                "A cancelled reservation cannot be confirmed."
-            );
+                    "A cancelled reservation cannot be confirmed.");
         }
         status = Status.CONFIRMED;
     }
@@ -83,14 +90,14 @@ public abstract class Reservation {
     public void cancelReservation() {
         if (status == Status.CANCELLED) {
             throw new IllegalStateException(
-                "Reservation is already cancelled."
-            );
+                    "Reservation is already cancelled.");
         }
         status = Status.CANCELLED;
     }
 
     public void updateCost(BigDecimal newCost) {
-        if (newCost == null || newCost.compareTo(BigDecimal.ZERO) < 0) {
+        if (newCost == null ||
+                newCost.compareTo(BigDecimal.ZERO) < 0) {
             throw new IllegalArgumentException("Invalid reservation cost.");
         }
         this.cost = newCost;

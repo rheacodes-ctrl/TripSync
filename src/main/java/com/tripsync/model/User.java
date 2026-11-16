@@ -10,30 +10,66 @@ public abstract class User {
     private String email;
     private String password;
 
-    // Constructor
+    // Normal constructor: creates a new user
     public User(String name, String email, String password) {
 
-        if (name == null || name.isBlank()) {
-            throw new IllegalArgumentException("Name cannot be empty");
-        }
+        this(UUID.randomUUID().toString(), name, email, password);
+    }
 
-        if (email == null || !email.contains("@")) {
-            throw new IllegalArgumentException("Invalid email");
-        }
+    // Constructor used internally for new users
+    private User(String userId, String name, String email, String password) {
+
+        validateUserId(userId);
+        validateName(name);
+        validateEmail(email);
 
         if (password == null || password.length() < 6) {
             throw new IllegalArgumentException(
-                "Password must contain at least 6 characters"
+                    "Password must contain at least 6 characters"
             );
         }
 
-        this.userId = UUID.randomUUID().toString();
+        this.userId = userId;
         this.name = name;
         this.email = email;
         this.password = password;
     }
 
-    // Getters
+    // Constructor for loading users from database
+    protected User(
+            String userId,
+            String name,
+            String email,
+            boolean fromDatabase
+    ) {
+        validateUserId(userId);
+        validateName(name);
+        validateEmail(email);
+
+        this.userId = userId;
+        this.name = name;
+        this.email = email;
+        this.password = null;
+    }
+
+    private void validateUserId(String userId) {
+        if (userId == null || userId.isBlank()) {
+            throw new IllegalArgumentException("Invalid user ID");
+        }
+    }
+
+    private void validateName(String name) {
+        if (name == null || name.isBlank()) {
+            throw new IllegalArgumentException("Name cannot be empty");
+        }
+    }
+
+    private void validateEmail(String email) {
+        if (email == null || !email.contains("@")) {
+            throw new IllegalArgumentException("Invalid email");
+        }
+    }
+
     public String getUserId() {
         return userId;
     }
@@ -46,22 +82,16 @@ public abstract class User {
         return email;
     }
 
-    // Setters
     public void setName(String name) {
-        if (name == null || name.isBlank()) {
-            throw new IllegalArgumentException("Invalid name");
-        }
+        validateName(name);
         this.name = name;
     }
 
     public void setEmail(String email) {
-        if (email == null || !email.contains("@")) {
-            throw new IllegalArgumentException("Invalid email");
-        }
+        validateEmail(email);
         this.email = email;
     }
 
-    // Abstract methods
     public abstract String getRole();
 
     public abstract void displayProfile();
