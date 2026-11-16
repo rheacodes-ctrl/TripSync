@@ -72,6 +72,40 @@ public class UserDAO {
         return null;
     }
 
+    // READ BY EMAIL
+    // Added for the invitation system so an invitee can be linked to a
+    // registered user when one exists. Backward-compatible addition.
+    // MySQL's default VARCHAR collation is case-insensitive, so this
+    // matches an email regardless of stored case.
+    public User getUserByEmail(String email) throws SQLException {
+
+        if (email == null || email.isBlank()) {
+            return null;
+        }
+
+        String sql = """
+                SELECT user_id, name, email, role
+                FROM users
+                WHERE email = ?
+                LIMIT 1
+                """;
+
+        try (Connection connection = DBConnection.getConnection();
+             PreparedStatement statement =
+                     connection.prepareStatement(sql)) {
+
+            statement.setString(1, email.trim());
+
+            try (ResultSet result = statement.executeQuery()) {
+                if (result.next()) {
+                    return mapUser(result);
+                }
+            }
+        }
+
+        return null;
+    }
+
     // READ ALL
     public List<User> getAllUsers() throws SQLException {
 

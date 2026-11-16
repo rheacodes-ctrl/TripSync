@@ -1,0 +1,16 @@
+src/main/java/com/tripsync/dao/ActivityDAOTest.java
+src/main/java/com/tripsync/dao/DocumentDAOTest.java
+src/main/java/com/tripsync/dao/PaymentDAOTest.java
+src/main/java/com/tripsync/dao/ExpenseDAOTest.java
+src/main/java/com/tripsync/dao/TripDAOTest.java
+src/main/java/com/tripsync/dao/ReservationDAOTest.java
+src/main/java/com/tripsync/dao/DestinationDAOTest.java
+src/main/java/com/tripsync/dao/TripInvitationDAOTest.java
+src/main/java/com/tripsync/dao/UserDAOTest.java
+src/main/java/com/tripsync/manager/TripInvitationManagerTest.java
+src/main/java/com/tripsync/service/ReservationManagerTest.java
+src/main/java/com/tripsync/service/ExpenseManagerTest.java
+src/main/java/com/tripsync/service/ActivityManagerTest.java
+src/main/java/com/tripsync/service/TripManagerTest.java
+src/main/java/com/tripsync/email/GmailEmailManualTest.java
+src/main/java/com/tripsync/email/EmailServiceTest.java

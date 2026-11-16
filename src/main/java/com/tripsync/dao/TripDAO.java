@@ -262,6 +262,41 @@ public class TripDAO {
         }
     }
 
+    // ADD MEMBER on a shared connection. Added for the invitation
+    // system: accepting an invitation must insert the trip member and
+    // update the invitation status in one transaction. This overload
+    // performs only the insert on the supplied connection and does not
+    // touch autoCommit, so callers control the transaction. It does
+    // not repeat the "traveler only" validation here; the caller is
+    // responsible for that. Backward-compatible addition; the existing
+    // addMember(String, String) is unchanged.
+    public boolean addMember(Connection connection, String tripId,
+            String userId) throws SQLException {
+
+        if (connection == null) {
+            throw new IllegalArgumentException("Connection is required.");
+        }
+        if (tripId == null || tripId.isBlank() || userId == null
+                || userId.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Trip id and user id are required.");
+        }
+
+        String sql = """
+                INSERT INTO trip_members (trip_id, user_id)
+                VALUES (?, ?)
+                """;
+
+        try (PreparedStatement statement =
+                     connection.prepareStatement(sql)) {
+
+            statement.setString(1, tripId);
+            statement.setString(2, userId);
+
+            return statement.executeUpdate() == 1;
+        }
+    }
+
     // REMOVE MEMBER
     public boolean removeMember(String tripId, String userId)
             throws SQLException {
