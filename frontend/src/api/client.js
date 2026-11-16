@@ -20,6 +20,7 @@ async function http(method, path, body) {
 const rest = {
   login: (email, password) => http('POST', '/auth/login', { email, password }),
   register: (d) => http('POST', '/auth/register', d),
+  updateProfile: (id, d) => http('PUT', `/users/${id}`, d),
   listTrips: (userId) => http('GET', `/users/${userId}/trips`),
   getTrip: (id) => http('GET', `/trips/${id}`),
   createTrip: (d) => http('POST', '/trips', d),
@@ -40,12 +41,36 @@ const rest = {
   addExpense: (tripId, d) => http('POST', `/trips/${tripId}/expenses`, d),
   deleteExpense: (id) => http('DELETE', `/expenses/${id}`),
   addPayment: (tripId, d) => http('POST', `/trips/${tripId}/payments`, d),
+  sendNotification: (tripId, d) => http('POST', `/trips/${tripId}/notifications`, d),
   addDocument: (tripId, d) => http('POST', `/trips/${tripId}/documents`, d),
   deleteDocument: (id) => http('DELETE', `/documents/${id}`),
 }
 
 /* ---------------- Mock implementation ---------------- */
 const pub = ({ password, ...u }) => u
+const money = (n) => '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })
+const spentOn = (db, tripId) =>
+  db.reservations.filter((r) => r.tripId === tripId && r.status !== 'CANCELLED').reduce((s, r) => s + r.cost, 0)
+  + db.expenses.filter((e) => e.tripId === tripId).reduce((s, e) => s + e.amount, 0)
+// Mirrors the backend's BudgetExceededException
+function checkBudget(db, tripId, extra) {
+  const trip = db.trips.find((t) => t.tripId === tripId)
+  const after = spentOn(db, tripId) + extra
+  if (after > trip.budget) throw new Error(`BudgetExceededException: This would bring spending to ${money(after)}, which is ${money(after - trip.budget)} over the ${money(trip.budget)} budget.`)
+}
+// One log row per recipient per channel (what the Gmail / WhatsApp services would send)
+function notify(db, tripId, type, userIds, message) {
+  const now = new Date().toISOString().slice(0, 19)
+  userIds.forEach((userId) => {
+    const u = db.users.find((x) => x.userId === userId)
+    if (!u) return
+    const channels = (u.notifyVia || ['EMAIL']).filter((c) => c !== 'WHATSAPP' || u.phone)
+    channels.forEach((channel) => db.notifications.push({ notificationId: uid('N'), tripId, type, channel, toUserId: userId, message, status: 'SENT', sentAt: now }))
+  })
+}
+const assertWithin = (what, d, from, to, scope) => {
+  if (d < from || d > to) throw new Error(`${what} must fall within ${scope} (${from} to ${to}).`)
+}
 const commit = (v) => { save(); return delay(v ?? { ok: true }) }
 const drop = (db, table, fn) => { db[table] = db[table].filter((x) => !fn(x)) }
 const toggle = (db, table, key, id, userId) => {
@@ -63,9 +88,15 @@ const mock = {
   async register({ name, email, password, role, phone }) {
     const db = load()
     if (db.users.some((u) => u.email.toLowerCase() === email.toLowerCase())) throw new Error('Email already registered')
-    const u = { userId: uid('U'), name, email, password, role, phone }
+    const u = { userId: uid('U'), name, email, password, role, phone, preferences: [], notifyVia: ['EMAIL'] }
     db.users.push(u)
     return commit({ user: pub(u), token: 'mock' })
+  },
+  async updateProfile(id, d) {
+    const u = load().users.find((x) => x.userId === id)
+    Object.assign(u, { name: d.name, phone: d.phone, preferences: d.preferences, notifyVia: d.notifyVia })
+    save()
+    return delay(pub(u))
   },
   async listTrips(userId) {
     const db = load()
@@ -74,6 +105,7 @@ const mock = {
       ...t,
       memberCount: db.tripMembers.filter((m) => m.tripId === t.tripId).length,
       destinationCount: db.destinations.filter((d) => d.tripId === t.tripId).length,
+      members: db.tripMembers.filter((m) => m.tripId === t.tripId).map((m) => pub(db.users.find((u) => u.userId === m.userId))),
       spent: db.reservations.filter((r) => r.tripId === t.tripId && r.status !== 'CANCELLED').reduce((s, r) => s + r.cost, 0)
         + db.expenses.filter((e) => e.tripId === t.tripId).reduce((s, e) => s + e.amount, 0),
     })))
@@ -101,6 +133,7 @@ const mock = {
       reservations: db.reservations.filter((r) => r.tripId === id),
       payments: db.payments.filter((p) => p.tripId === id),
       documents: db.documents.filter((d) => d.tripId === id),
+      notifications: db.notifications.filter((n) => n.tripId === id).sort((a, b) => b.sentAt.localeCompare(a.sentAt)),
     })
   },
   async createTrip(d) {
@@ -117,7 +150,7 @@ const mock = {
     const aIds = db.activities.filter((a) => dIds.includes(a.destinationId)).map((a) => a.activityId)
     const eIds = db.expenses.filter((e) => e.tripId === id).map((e) => e.expenseId)
     drop(db, 'trips', (x) => x.tripId === id)
-    ;['tripMembers', 'destinations', 'reservations', 'expenses', 'payments', 'documents'].forEach((t) => drop(db, t, (x) => x.tripId === id))
+    ;['tripMembers', 'destinations', 'reservations', 'expenses', 'payments', 'documents', 'notifications'].forEach((t) => drop(db, t, (x) => x.tripId === id))
     ;['activities'].forEach((t) => drop(db, t, (x) => aIds.includes(x.activityId)))
     ;['activityParticipants', 'activityVotes'].forEach((t) => drop(db, t, (x) => aIds.includes(x.activityId)))
     drop(db, 'expenseSplits', (x) => eIds.includes(x.expenseId))
@@ -129,10 +162,20 @@ const mock = {
     if (!u) throw new Error('No user registered with that email')
     if (db.tripMembers.some((m) => m.tripId === tripId && m.userId === u.userId)) throw new Error('Already a member')
     db.tripMembers.push({ tripId, userId: u.userId })
+    const trip = db.trips.find((t) => t.tripId === tripId)
+    notify(db, tripId, 'INVITATION', [u.userId], `You have been invited to ${trip.tripName}.`)
     return commit()
   },
   async removeMember(tripId, userId) { drop(load(), 'tripMembers', (m) => m.tripId === tripId && m.userId === userId); return commit() },
-  async addDestination(tripId, d) { load().destinations.push({ destinationId: uid('D'), tripId, ...d }); return commit() },
+  async addDestination(tripId, d) {
+    const db = load()
+    const t = db.trips.find((x) => x.tripId === tripId)
+    if (d.departureDate < d.arrivalDate) throw new Error('Departure must be on or after arrival.')
+    assertWithin('Arrival', d.arrivalDate, t.startDate, t.endDate, 'the trip dates')
+    assertWithin('Departure', d.departureDate, t.startDate, t.endDate, 'the trip dates')
+    db.destinations.push({ destinationId: uid('D'), tripId, ...d })
+    return commit()
+  },
   async deleteDestination(id) {
     const db = load()
     const aIds = db.activities.filter((a) => a.destinationId === id).map((a) => a.activityId)
@@ -143,6 +186,8 @@ const mock = {
     return commit()
   },
   async addActivity(destinationId, d) {
+    const dest = load().destinations.find((x) => x.destinationId === destinationId)
+    assertWithin('Activity date', d.activityDate, dest.arrivalDate, dest.departureDate, 'the destination stay')
     load().activities.push({ activityId: uid('A'), destinationId, status: 'PLANNED', ...d, estimatedCost: Number(d.estimatedCost || 0) })
     return commit()
   },
@@ -156,20 +201,41 @@ const mock = {
   },
   async toggleVote(id, userId) { toggle(load(), 'activityVotes', 'activityId', id, userId); return commit() },
   async toggleParticipant(id, userId) { toggle(load(), 'activityParticipants', 'activityId', id, userId); return commit() },
-  async addReservation(tripId, d) { load().reservations.push({ reservationId: uid('R'), tripId, status: 'PENDING', ...d, cost: Number(d.cost) }); return commit() },
-  async setReservationStatus(id, status) { load().reservations.find((r) => r.reservationId === id).status = status; return commit() },
+  async addReservation(tripId, d) {
+    const db = load()
+    checkBudget(db, tripId, Number(d.cost))
+    db.reservations.push({ reservationId: uid('R'), tripId, status: 'PENDING', ...d, cost: Number(d.cost) })
+    return commit()
+  },
+  async setReservationStatus(id, status) {
+    const db = load()
+    const r = db.reservations.find((x) => x.reservationId === id)
+    if (r.status === 'CANCELLED' && status !== 'CANCELLED') checkBudget(db, r.tripId, r.cost)
+    r.status = status
+    const members = db.tripMembers.filter((m) => m.tripId === r.tripId).map((m) => m.userId)
+    notify(db, r.tripId, 'RESERVATION_UPDATE', members, `${r.providerName} was ${status.toLowerCase()} (${money(r.cost)}).`)
+    return commit()
+  },
   async deleteReservation(id) { drop(load(), 'reservations', (r) => r.reservationId === id); return commit() },
-  async addExpense(tripId, { description, amount, paidBy, expenseDate, participantIds }) {
+  async addExpense(tripId, { description, amount, paidBy, expenseDate, participantIds, splitType = 'EQUAL', splits }) {
     const db = load()
     const amt = Number(amount)
+    checkBudget(db, tripId, amt)
     const expenseId = uid('E')
-    db.expenses.push({ expenseId, tripId, description, amount: amt, paidBy, expenseDate })
-    // equal split, like Expense.splitEqually(); leftover paise goes to the first person
-    const n = participantIds.length
-    const base = Math.floor((amt * 100) / n) / 100
-    const rem = Math.round((amt - base * n) * 100) / 100
-    participantIds.forEach((userId, i) =>
-      db.expenseSplits.push({ expenseId, userId, shareAmount: +(i === 0 ? base + rem : base).toFixed(2), isSettled: userId === paidBy }))
+    let rows
+    if (splitType === 'CUSTOM') {
+      const total = Math.round(splits.reduce((s, x) => s + Number(x.shareAmount), 0) * 100) / 100
+      if (Math.abs(total - amt) > 0.009) throw new Error(`Custom shares add up to ${money(total)} but the expense is ${money(amt)}.`)
+      rows = splits.map((x) => ({ userId: x.userId, shareAmount: Number(x.shareAmount) }))
+    } else {
+      // equal split, like Expense.splitEqually(); leftover paise goes to the first person
+      const n = participantIds.length
+      const base = Math.floor((amt * 100) / n) / 100
+      const rem = Math.round((amt - base * n) * 100) / 100
+      rows = participantIds.map((userId, i) => ({ userId, shareAmount: +(i === 0 ? base + rem : base).toFixed(2) }))
+    }
+    db.expenses.push({ expenseId, tripId, description, amount: amt, paidBy, expenseDate, splitType })
+    rows.forEach((r) => db.expenseSplits.push({ expenseId, ...r, isSettled: r.userId === paidBy }))
     return commit()
   },
   async deleteExpense(id) {
@@ -180,6 +246,10 @@ const mock = {
   },
   async addPayment(tripId, d) {
     load().payments.push({ paymentId: uid('P'), tripId, status: 'COMPLETED', paymentDate: new Date().toISOString().slice(0, 10), ...d, amount: Number(d.amount) })
+    return commit()
+  },
+  async sendNotification(tripId, { type, userIds, message }) {
+    notify(load(), tripId, type, userIds, message)
     return commit()
   },
   async addDocument(tripId, d) { load().documents.push({ documentId: uid('DOC'), tripId, uploadedAt: new Date().toISOString().slice(0, 10), filePath: 'uploads/' + d.fileName, ...d }); return commit() },
